@@ -1,0 +1,70 @@
+---
+title: "SCD1i_AD_singlecell"
+author: "GMB"
+date: "10/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(Nebulosa)
+```
+
+Load the Anndata h5 file generated from GenAP Galaxy pipeline (DGE_scanpy1.4.3) and add multiplexing meta dada
+```{r}
+scAD <- ReadH5AD("../41_Scanpy_RunUMAP_on_data_39_UMAP_object.h5")
+multiplex_tags <- read.csv("../FERK_1_Sample_Tag_Calls.csv", header = T, row.names = 1)
+rownames(multiplex_tags) <- paste("X", rownames(multiplex_tags), sep = "")
+cellnames <- rownames(multiplex_tags)
+multiplex_tags <- as.data.frame(multiplex_tags$Sample_Tag)
+rownames(multiplex_tags) <- cellnames
+scAD <- AddMetaData(scAD, multiplex_tags, col.name = "Multiplex")
+
+scAD.archive <- scAD
+scAD <- subset(scAD, subset =Multiplex  != "Multiplet" )
+#reorder multiplex tags for further visualization
+scAD@meta.data$mplex <- as.character(scAD@meta.data$Multiplex)
+scAD@meta.data$mplex <- revalue(scAD@meta.data$Multiplex, c("WT DMSO" = 1, "3xTg DMSO" =2, "WT SCD1i" =3, "3xTg SCD1i" =4, "Undetermined" =5))
+scAD@meta.data$mplex <- as.numeric(scAD@meta.data$mplex)
+scAD@meta.data <- dplyr::arrange(scAD@meta.data, desc(scAD@meta.data$mplex))
+
+saveRDS(scAD, file = "./scAD.rds")
+```
+
+```{r}
+plot <- DimPlot(scAD)
+HoverLocator(plot = plot, information = FetchData(scAD, vars = c("ident", "PC_1", "nFeature_RNA")))
+
+All.markers <- FindAllMarkers(scAD)
+View(All.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_logFC))
+
+#annotate using http://celltypes.org/brain/
+scAD <- RenameIdents(scAD, "28" = "Neuron","12" = "unclear","17" = "OPC",'4'  = "unclear",'8' = "Microglia",'24' = "unclear",'20' = "Microglia",'6' = "Oligodendrocyte",'11' = "Endothelial",'7' = "Astrocyte",'15' = "unclear","23" = "unclear","19" = "unclear","30" = "Oligodendrocyte","16" = "unclear","5" = "Endothelial","26" = "unclear","18" = "Microglia","29" = "Oligodendrocyte","10" = "Astrocytes","0" = "Endothelial","13" = "Microglia","3" = "Endothelial","2" = "Astrocyte","27" = "unclear","21" = "Endothelial","14" = "Astrocyte","22" = "unclear","1" = "Microglia","25" = "unclear","32" = "Oligodendrocyte","9" = "Endothelial","31" = "unclear")
+scAD[["cell.id"]] <- Idents(object = scAD)
+Idents(scAD) <- "cluster.id"
+
+Idents(scAD) <- "Multiplex"
+scAD <- RenameIdents(scAD, "SampleTag02_mm" = "3xTg DMSO", "SampleTag01_mm" = "WT DMSO", "SampleTag03_mm" = "WT SCD1i", "SampleTag04_mm" = "3xTg SCD1i")
+scAD[["Multiplex"]] <- Idents(object = scAD)
+able(scAD@meta.data$cell.id, scAD@meta.data$Multiplex) #to count the number of cells per cell type per multiplex tag
+```
+
+To identify and plot gene expression of specific genes
+```{r}
+
+grep("Scd", scAD@assays$RNA@data@Dimnames[[1]],value = T) 
+# [1] "Scd1" "Scd2" "Scd3" "Scd4"
+plot_density(scAD, features = grep("Scd", scAD@assays$RNA@data@Dimnames[[1]],value = T))
+
+FeaturePlot(scAD, "Scd2", split.by = "Multiplex")
+
+#get read counts for Scd genes
+DotPlot(scAD, features = grep("Scd", scAD@assays$RNA@data@Dimnames[[1]],value = T), )
+cluster.avg <- AverageExpression(scAD)
+cluster.avg[["RNA"]][c("Scd1", "Scd2", "Scd3", "Scd4", "Actb", "Gapdh"),]
+
+
+DotPlot(scAD, features = c("Scd1", "Scd2", "Scd3", "Scd4"), split.by = "Multiplex", cluster.idents = F,  cols = brewer.pal(5,"Set2"))+ RotatedAxis()
+```
+
