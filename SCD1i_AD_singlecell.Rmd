@@ -9,23 +9,43 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(Seurat)
 library(Nebulosa)
+library(scales)
+library(scibetR)
+library(scMCA)
 ```
 
-Load the Anndata h5 file generated from GenAP Galaxy pipeline (DGE_scanpy1.4.3) and add multiplexing meta dada
+Load the Anndata h5 file generated from GenAP Galaxy pipeline (DGE_scanpy1.4.3) and add multiplexing meta data
+Also associate the original count matrix to the seurat object, add metadata
 ```{r}
 scAD <- ReadH5AD("../41_Scanpy_RunUMAP_on_data_39_UMAP_object.h5")
 multiplex_tags <- read.csv("../FERK_1_Sample_Tag_Calls.csv", header = T, row.names = 1)
+count_matrix <- read.table("../sc_Laura_transposed.tsv", header = T, row.names = 1, sep = "\t")
+
+scAD@assays$RNA@counts <- as.matrix(count_matrix[,colnames(count_matrix) %in% scAD@assays$RNA@data@Dimnames[[2]]])
 rownames(multiplex_tags) <- paste("X", rownames(multiplex_tags), sep = "")
 cellnames <- rownames(multiplex_tags)
 multiplex_tags <- as.data.frame(multiplex_tags$Sample_Tag)
 rownames(multiplex_tags) <- cellnames
 scAD <- AddMetaData(scAD, multiplex_tags, col.name = "Multiplex")
+scAD <- subset(scAD, subset =Multiplex  != "Multiplet" )
+#Add genotype metadata
+scAD <- RenameIdents(scAD, "3xTg DMSO" = "3xTg", "WT DMSO" = "WT", "WT SCD1i" = "WT", "3xTg SCD1i" = "3xTg")
+scAD[["Genotype"]] <- Idents(scAD)
+
+#Add treatment metadata
+scAD <- RenameIdents(scAD, "3xTg DMSO" = "DMSO", "WT DMSO" = "DMSO", "WT SCD1i" = "Scd1i", "3xTg SCD1i" = "Scd1i")
+scAD[["Treatment"]] <- Idents(scAD)
+
+#remove low UMI and high mito cells
+scAD <- subset(scAD, subset = nCount_RNA > 1000 & percent.mt < 500)
 
 scAD.archive <- scAD
-scAD <- subset(scAD, subset =Multiplex  != "Multiplet" )
+
+
 #reorder multiplex tags for further visualization
+#CAREFUL, THIS HAS BEEN SCREWING UP THE DATA
 scAD@meta.data$mplex <- as.character(scAD@meta.data$Multiplex)
-scAD@meta.data$mplex <- revalue(scAD@meta.data$Multiplex, c("WT DMSO" = 1, "3xTg DMSO" =2, "WT SCD1i" =3, "3xTg SCD1i" =4, "Undetermined" =5))
+scAD@meta.data$mplex <- revalue(scAD@meta.data$mplex, c("WT DMSO" = 1, "3xTg DMSO" =2, "WT SCD1i" =3, "3xTg SCD1i" =4, "Undetermined" =5))
 scAD@meta.data$mplex <- as.numeric(scAD@meta.data$mplex)
 scAD@meta.data <- dplyr::arrange(scAD@meta.data, desc(scAD@meta.data$mplex))
 
@@ -33,21 +53,59 @@ saveRDS(scAD, file = "./scAD.rds")
 ```
 
 ```{r}
-plot <- DimPlot(scAD)
-HoverLocator(plot = plot, information = FetchData(scAD, vars = c("ident", "PC_1", "nFeature_RNA")))
-
+plot <- DimPlot(scAD, group.by = "louvain")
+HoverLocator(plot = plot, information = FetchData(scAD, vars = c("louvain", "cell.id", "scibet_20TM", "MCA")))
 All.markers <- FindAllMarkers(scAD)
-View(All.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_logFC))
+View(All.markers %>% group_by(cluster) %>% top_n(n = 20, wt = avg_logFC))
 
-#annotate using http://celltypes.org/brain/
-scAD <- RenameIdents(scAD, "28" = "Neuron","12" = "unclear","17" = "OPC",'4'  = "unclear",'8' = "Microglia",'24' = "unclear",'20' = "Microglia",'6' = "Oligodendrocyte",'11' = "Endothelial",'7' = "Astrocyte",'15' = "unclear","23" = "unclear","19" = "unclear","30" = "Oligodendrocyte","16" = "unclear","5" = "Endothelial","26" = "unclear","18" = "Microglia","29" = "Oligodendrocyte","10" = "Astrocytes","0" = "Endothelial","13" = "Microglia","3" = "Endothelial","2" = "Astrocyte","27" = "unclear","21" = "Endothelial","14" = "Astrocyte","22" = "unclear","1" = "Microglia","25" = "unclear","32" = "Oligodendrocyte","9" = "Endothelial","31" = "unclear")
+#first annotate using http://celltypes.org/brain/
+#refine with other tools (scibet, MCA [see below]) and by Laura's notes
+scAD <- RenameIdents(scAD, '0' = 'Endothelial',
+                     '1' = 'Microglia',
+                     '2' = 'Astrocyte',
+                     '3' = 'Pericyte',
+                     '4' = 'Oligodendrocyte',
+                     '5' = 'Endothelial',
+                     '6' = 'Oligodendrocyte',
+                     '7' = 'Astrocyte',
+                     '8' = 'Microglia',
+                     '9' = 'Pericyte',
+                     '10' = 'Astrocyte',
+                     '11' = 'Endothelial',
+                     '12' = 'Oligodendrocyte', #myelinating oligodendrocyte?
+                     '13' = 'Macrophage', #NK/T cell subcluster
+                     '14' = 'Astrocyte',
+                     '15' = 'Endothelial',
+                     '16' = 'Mural',
+                     '17' = 'OPC',
+                     '18' = 'Endothelial',
+                     '19' = 'Macrophage', #B cell subcluster
+                     '20' = 'Microglia',
+                     '21' = 'Endothelial',
+                     '22' = 'Mural',
+                     '23' = 'Ependymal',
+                     '24' = 'Stromal',
+                     '25' = 'Vascular endothelial',
+                     '26' = 'Tanycyte',
+                     '27' = 'Stromal',
+                     '28' = 'Neuron',
+                     '29' = 'Oligodendrocyte',
+                     '30' = 'Oligodendrocyte',
+                     '31' = 'Endothelial',
+                     '32' = 'Oligodendrocyte')
 scAD[["cell.id"]] <- Idents(object = scAD)
-Idents(scAD) <- "cluster.id"
+
 
 Idents(scAD) <- "Multiplex"
 scAD <- RenameIdents(scAD, "SampleTag02_mm" = "3xTg DMSO", "SampleTag01_mm" = "WT DMSO", "SampleTag03_mm" = "WT SCD1i", "SampleTag04_mm" = "3xTg SCD1i")
 scAD[["Multiplex"]] <- Idents(object = scAD)
-able(scAD@meta.data$cell.id, scAD@meta.data$Multiplex) #to count the number of cells per cell type per multiplex tag
+
+table <- table(scAD@meta.data$louvain, scAD@meta.data$Multiplex) #count the number of cels per cell CLUSTER per multiplex tag
+write.csv(table, "../tables/cells_cluster_per_Multiplex.csv")
+
+table <- table(scAD@meta.data$cell.id, scAD@meta.data$Multiplex) #to count the number of cells per cell TYPE per multiplex tag
+write.csv(table, "../tables/cells_cellID_per_Multiplex.csv")
+
 ```
 
 To identify and plot gene expression of specific genes
@@ -65,6 +123,172 @@ cluster.avg <- AverageExpression(scAD)
 cluster.avg[["RNA"]][c("Scd1", "Scd2", "Scd3", "Scd4", "Actb", "Gapdh"),]
 
 
-DotPlot(scAD, features = c("Scd1", "Scd2", "Scd3", "Scd4"), split.by = "Multiplex", cluster.idents = F,  cols = brewer.pal(5,"Set2"))+ RotatedAxis()
+DotPlot(scAD, features = c("Scd1", "Scd2", "Scd3", "Scd4"), split.by = "Multiplex", cluster.idents = F,  cols = hue_pal()(5))+ RotatedAxis()
+write.csv(dp_wrongOrder$data, file = "../Scd_expr_multiplex.csv")
+
+#check whether we can use any of the transgenes (mapped on mouse genome) to distinguish the "Undetermined" cells
+DotPlot(scAD, features = c("App", "Psen1", "Mapt", "Thy1", "Ptprc"), split.by = "Genotype", cols = hue_pal()(3)) #doesn't seem like any of the markers are differentialy expressed based on genotype :(
+ggsave("../figures/3xTg_marker_expr.pdf")
+```
+
+subset the scAD object to identify DEGs within clusters.
+Start by digging int Oligodendrocytes to identify DEGs betwen multiplex samples (conditions)
+```{r}
+Oligo <- subset(scAD, subset = cell.id == "Oligodendrocyte")
+Idents(Oligo) <- "Multiplex"
+DEG_Oligo <- FindAllMarkers(Oligo) ##No DEG above threshold for WT samples
+DEG_Oligo <- FindMarkers(Oligo, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", logfc.threshold = 0.05) #find markers for specific comparisons
+DEG_Oligo <- FindMarkers(Oligo, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", logfc.threshold = 0.05)
+write.csv(DEG_Oligo, "../tables/DEG_oligo_WTDvs3xtgD.csv")
+rm(Oligo) #to save on memory?
+
+#subset Microglia to characterize subclusters
+Microglia <- subset(scAD, subset = cell.id == "Microglia")
+Idents(Microglia) <- "louvain"
+#remove annoying stragglers
+plot <- DimPlot(Microglia)
+to.remove <- CellSelector(plot)
+to.keep <- colnames(Microglia)
+to.keep <- to.keep[to.keep %!in% to.remove]
+Microglia <- subset(Microglia, cells = to.keep)
+
+Microglia_subcluster_DEG <- FindAllMarkers(Microglia)
+write.csv(Microglia_subcluster_DEG, "../tables/Microglia_only_DEG.csv")
+
+DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", subset.ident = 8, logfc.threshold = 0.05)
+DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", subset.ident = 8, logfc.threshold = 0.05)
+write.csv(DEG_Micro, "../tables/DEG_micro_cluster8_WTDvs3xtgS.csv")
+
+write.csv(table(Microglia$louvain, Microglia$Multiplex), "../tables/Microglia_clusters_per_multiplex.csv")
+DimPlot(Microglia, group.by = "RNA_snn_res.0.5", split.by = "Multiplex")
+rm(Microglia) #to save on memory?
+
+
+#subset Astrocytes to characterize subclusters
+Astrocytes <- subset(scAD, subset = cell.id == "Astrocyte")
+Idents(Astrocytes) <- "louvain"
+Astrocyte_subcluster_DEG <- FindAllMarkers(Astrocytes)
+write.csv(Astrocyte_subcluster_DEG %>% group_by(cluster) %>% top_n(n=20, wt= avg_logFC), file = "../tables/Astrocytes_DEG.csv")
+DEG_Astro <- FindMarkers(Astrocytes, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05) #find markers for specific comparisons
+DEG_Astro <- FindMarkers(Astrocytes, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
+write.csv(DEG_Astro, "../tables/DEG_Astro_WTDvs3xtgS.csv")
+rm(Astrocytes) #to save on memory?
+
+#Subset uncler cells to better annotate them
+Unclear <- subset(scAD, subset = cell.id == "unclear")
+```
+
+Try scibet automatic cell annotation after downloading their "Single-cell transcriptomics of 20 mouse organs creates a Tabula Muris" trained model
+```{r}
+#load scibet missing function pro.core
+pro.core <- function(scibet.core){
+  cell.type <- unname(unlist(scibet.core[,1]))
+  scibet.core <- as.data.frame(t(scibet.core[,-1]))
+  colnames(scibet.core) <- cell.type
+  return(as.matrix(scibet.core))
+}
+
+model <- readr::read_csv("./GSE109774_scibet_core.csv") 
+
+model <- pro.core(model)
+genes <- colnames(model[,-1])
+
+querry <- GetAssayData(scAD, slot = "data") #sparse matrix
+querryMatrix <- as.matrix(querry) #convert to dense matrix
+querryMatrix <- as.data.frame(t(querryMatrix)) #convert to transposed data frame
+querryMatrix_sub <- querryMatrix[,colnames(querryMatrix) %in% genes]
+
+prd <- LoadModel_R(model)
+label <- prd(querryMatrix_sub) #generate a vector of cell IDs
+scAD[["scibet_20TM"]] <- label #attribute the IDs in the seurat object metadata
+
+
+#try using the Mouse cell atlas annotation tool (seems a bit sketchy) scMCA
+mca_result <- scMCA(scdata = querryMatrix, numbers_plot = 3)
+scMCA_vis(mca_result)
+scAD[["MCA"]] <- mca_result$scMCA
+```
+
+Perform new analysis on Microglia cells subsetted from the original object to identify subclusters
+```{r}
+Microglia <- FindVariableFeatures(Microglia, selection.method = "vst", nfeatures = 2000)
+microglia.genes <- rownames(Microglia)
+Microglia <- ScaleData(Microglia, features = microglia.genes)
+Microglia <- RunPCA(Microglia, features = VariableFeatures(Microglia))
+#Elbowplot to determine the numbers of PCA to include in cluster determination. Since we want granularity, I think 10 is good
+Microglia <- FindNeighbors(Microglia, dims = 1:10)
+Microglia <- FindClusters(Microglia, resolution = 0.4)
+microglia.DEG <- FindAllMarkers(Microglia, only.pos = T)
+write.csv(microglia.DEG %>% group_by(cluster) %>% top_n(n=30, wt=avg_logFC), file = "../tables/microglia_subcluster_DEG.csv" )
+write.csv(FindMarkers(Microglia, ident.1 = 1), file = "../tables/microglia_subcluster_DEG_cluster1.csv")
+write.csv(FindMarkers(Microglia, ident.1 = 3), file = "../tables/microglia_subcluster_DEG_cluster3.csv")
+
+All.markers[All.markers$cluster == 4 & All.markers$avg_logFC > 0,]
+
+VlnPlot(Microglia, split.by = "RNA_snn_res.0.4", features = c("Tmem119", "P2ry12", "Cx3cr1", "Apoe", "Cst7", "Spp1", "Lpl", "Hif1a", "Igf1", "H2-Aa", "H2-Ab1", "Cd74", "Ifit2", "Ifit3", "Irf7", "Oasl2", "Top2a", "Mcm2"), stack = T, flip = T)
+
+#based on Friedman et al. 2018, plot 3-gene density plots to identify microglial subpops
+DA_MG <- c("Csf1", "Cst7", "Itgax")
+TNK <- c("Thy1", "Cd3e", "Nkg7")
+IEG <- c("Fos", "Egr1", "Jun")
+Neutro <- c("S100a9", "Ngp", "Mmp9")
+MatureB <- c("Fcmr", "H2-DMb2", "Ms4a1") #"Ms4a1"
+PVM <- c("Pf4", "Mgl2", "Mrc1")
+Bcl2a1MG <- c("Bcl2a1b", "Bcl2a1d", "Mthfs")
+Mono <- c("S100a4", "Plac8", "Ccr2")
+ImmB <- c("Cd93", "Vpreb3") #"Vpreb3", "Rag1"
+IFN_MG <- c("Ifit3", "Ifi204", "Ccl12")
+Prolif <- c("Mki67", "Pcna", "Top2a")
+Resting_MG <- c("Tmem119", "P2ry12", "P2ry13")
+Malat1 <- "Malat1"
+
+to.plot <- c("Malat1", "Prolif", "Resting_MG", "IFN_MG", "DA_MG", "Bcl2a1MG", "TNK", "IEG", "Neutro", "MatureB", "PVM", "Mono", "ImmB")
+to.plot <- c("Prolif", "Resting_MG", "IFN_MG", "DA_MG", "Bcl2a1MG")
+
+plot0 <- DimPlot(Microglia, group.by = "RNA_snn_res.0.4", label = T, repel = T)
+plot_join <- plot0+NoLegend()
+plot_join <- plot_density(Microglia, features = "Malat1", joint = TRUE, combine = FALSE)+theme_void()+labs(title = "Malat1" )+ theme(plot.title = element_text(hjust = 0.5))
+for (i in to.plot){
+  j <- get(i)
+  plot1 <- plot_density(Microglia, features = j, joint = TRUE, combine = FALSE)
+  if (length(j) == 1) {
+    plot_join <- plot_join + plot1+theme_void()+labs(title = i )+ theme(plot.title = element_text(hjust = 0.5))
+  }
+  else{
+    plot_join <- plot_join + plot1[[length(plot1)]]+theme_void()+labs(title = i ) + theme(plot.title = element_text(hjust = 0.5))
+  }
+}
+ plot_join+plot_layout(ncol = 3) #save in 12x12
+ 
+ 
+Microglia <- RenameIdents(Microglia, '0' = 'Resting MG',
+                     '1' = 'IEG MG',
+                     '2' = '',
+                     '3' = '',
+                     '4'  = 'IEG MG',
+                     '5' = '',
+                     '6' = '',
+                     '7' = '',
+                     '8' = '',
+                     '9' = '',
+                     '10' = 'IFN MG',
+                     '11' = 'AD MG')
+```
+
+2020-12-28 after identification of new clusters probably being Microglia, redo the subsetting and fine identification of microglia before redoing the cluster finding
+```{r}
+Microglia2 <- subset(scAD, subset = cell.id == "Microglia")
+plot0 <- DimPlot(Microglia2, group.by = "louvain", label = T)
+plot_join <- plot0+NoLegend()
+for (i in to.plot){
+  j <- get(i)
+  plot1 <- plot_density(Microglia2, features = j, joint = TRUE, combine = FALSE)
+  if (length(j) == 1) {
+    plot_join <- plot_join + plot1+theme_void()+labs(title = i )+ theme(plot.title = element_text(hjust = 0.5))
+  }
+  else{
+    plot_join <- plot_join + plot1[[length(plot1)]]+theme_void()+labs(title = i ) + theme(plot.title = element_text(hjust = 0.5))
+  }
+}
 ```
 
