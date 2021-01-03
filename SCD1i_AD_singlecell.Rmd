@@ -50,6 +50,7 @@ scAD@meta.data$mplex <- as.numeric(scAD@meta.data$mplex)
 scAD@meta.data <- dplyr::arrange(scAD@meta.data, desc(scAD@meta.data$mplex))
 
 saveRDS(scAD, file = "./scAD.rds")
+saveRDS(Microglia, file = "./Microglia.rds")
 ```
 
 ```{r}
@@ -145,15 +146,19 @@ rm(Oligo) #to save on memory?
 #subset Microglia to characterize subclusters
 Microglia <- subset(scAD, subset = cell.id == "Microglia")
 Idents(Microglia) <- "louvain"
-#remove annoying stragglers
+#remove annoying stragglers and Undetermined cells
 plot <- DimPlot(Microglia)
 to.remove <- CellSelector(plot)
 to.keep <- colnames(Microglia)
 to.keep <- to.keep[to.keep %!in% to.remove]
-Microglia <- subset(Microglia, cells = to.keep)
+Microglia <- subset(Microglia, cells = to.keep, subset = Multiplex != "Undetermined")
+
 
 Microglia_subcluster_DEG <- FindAllMarkers(Microglia)
 write.csv(Microglia_subcluster_DEG, "../tables/Microglia_only_DEG.csv")
+
+DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
+DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
 
 DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", subset.ident = 8, logfc.threshold = 0.05)
 DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", subset.ident = 8, logfc.threshold = 0.05)
@@ -218,14 +223,15 @@ Microglia <- RunPCA(Microglia, features = VariableFeatures(Microglia))
 #Elbowplot to determine the numbers of PCA to include in cluster determination. Since we want granularity, I think 10 is good
 Microglia <- FindNeighbors(Microglia, dims = 1:10)
 Microglia <- FindClusters(Microglia, resolution = 0.4)
-microglia.DEG <- FindAllMarkers(Microglia, only.pos = T)
-write.csv(microglia.DEG %>% group_by(cluster) %>% top_n(n=30, wt=avg_logFC), file = "../tables/microglia_subcluster_DEG.csv" )
+microglia.DEG <- FindAllMarkers(Microglia)
+write.csv(microglia.DEG, file = "../tables/microglia_subcluster_DEG.csv" )
 write.csv(FindMarkers(Microglia, ident.1 = 1), file = "../tables/microglia_subcluster_DEG_cluster1.csv")
 write.csv(FindMarkers(Microglia, ident.1 = 3), file = "../tables/microglia_subcluster_DEG_cluster3.csv")
 
 All.markers[All.markers$cluster == 4 & All.markers$avg_logFC > 0,]
 
 VlnPlot(Microglia, split.by = "RNA_snn_res.0.4", features = c("Tmem119", "P2ry12", "Cx3cr1", "Apoe", "Cst7", "Spp1", "Lpl", "Hif1a", "Igf1", "H2-Aa", "H2-Ab1", "Cd74", "Ifit2", "Ifit3", "Irf7", "Oasl2", "Top2a", "Mcm2"), stack = T, flip = T)
+VlnPlot(Microglia, split.by = "RNA_snn_res.0.4", features = c("Scd1", "Scd2", "Scd3", "Scd4"), stack = T, flip = T)
 
 #based on Friedman et al. 2018, plot 3-gene density plots to identify microglial subpops
 DA_MG <- c("Csf1", "Cst7", "Itgax")
@@ -243,7 +249,7 @@ Resting_MG <- c("Tmem119", "P2ry12", "P2ry13")
 Malat1 <- "Malat1"
 
 to.plot <- c("Malat1", "Prolif", "Resting_MG", "IFN_MG", "DA_MG", "Bcl2a1MG", "TNK", "IEG", "Neutro", "MatureB", "PVM", "Mono", "ImmB")
-to.plot <- c("Prolif", "Resting_MG", "IFN_MG", "DA_MG", "Bcl2a1MG")
+to.plot <- c("Prolif", "Resting_MG", "IFN_MG", "DA_MG", "IEG", "Bcl2a1MG")
 
 plot0 <- DimPlot(Microglia, group.by = "RNA_snn_res.0.4", label = T, repel = T)
 plot_join <- plot0+NoLegend()
@@ -260,6 +266,8 @@ for (i in to.plot){
 }
  plot_join+plot_layout(ncol = 3) #save in 12x12
  
+#plot Scd genes in Microglia
+plot_density(Microglia, features = c("Scd1","Scd2", "Scd3", "Scd4"))
  
 Microglia <- RenameIdents(Microglia, '0' = 'Resting MG',
                      '1' = 'IEG MG',
@@ -290,5 +298,60 @@ for (i in to.plot){
     plot_join <- plot_join + plot1[[length(plot1)]]+theme_void()+labs(title = i ) + theme(plot.title = element_text(hjust = 0.5))
   }
 }
+```
+
+Generate staggered bar graph for cluster x multiplex in Microglia
+```{r}
+library(tidyr)
+data <- read.table("../test_table", header = T, sep = "\t")
+data.pivot <- pivot_longer(data, cols = 2:5, names_to = "Multiplex", values_to = "Percent_total")
+data.pivot$cluster <- as.factor(data.pivot$cluster)
+data.pivot$Multiplex <- factor(data.pivot$Multiplex,levels = c("WTD", "X3xTgD", "WTS", "X3xTgS"))
+
+ggplot(data.pivot, aes(x = cluster, y = Percent_total, fill = Multiplex))+
+  geom_bar(stat = "identity", position = position_dodge(width = 0.5 ), color = "black")+
+  scale_fill_manual(values = c("white", "grey50", "blue", "red"))
+  
+
+```
+
+Heatmap of DEGs between WTD/3xTgD/3xTgS in pseudobulk microglia
+```{r}
+DEG_Micro1 <- FindMarkers(Microglia, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
+DEG_Micro2 <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
+
+DEG1 <- rownames(DEG_Micro1[DEG_Micro1$p_val_adj < 0.05,])
+DEG2 <- rownames(DEG_Micro2[DEG_Micro2$p_val_adj < 0.05,])
+DEG <- unique(c(DEG1,DEG2))
+
+Idents(Microglia) <- "Multiplex"
+avg_expr_DEG <- AverageExpression(Microglia, features = DEG, assays = "RNA")
+pheatmap::pheatmap(avg_expr_DEG$RNA[,c(2,1,3,4)],
+                   scale = "row",
+                   cluster_cols = F, 
+                   cellwidth = 20, 
+                   cellheight = 9,gaps_col = c(1,2,3),filename = "../figures/MG_DEG_heatmap.pdf")
+
+```
+
+density plots of Scd genes between multiplex tags in microglia
+```{r}
+avg_expr_scd <-AverageExpression(Microglia, features = c("Scd1", "Scd2", "Scd3", "Scd4"), assays = "RNA") 
+
+dot <- DotPlot(Microglia, features = c("Scd1","Scd2", "Scd3", "Scd4"), idents = c("3xTg DMSO", "WT DMSO", "WT SCD1i", "3xTg SCD1i"))
+write.csv(dot$data, "../tables/Microglia_SCD_multiplex.csv")
+
+FeaturePlot(Microglia, features = c("Scd1","Scd2"), split.by = "Multiplex" )
+
+table <- AverageExpression(Microglia, features = c("Scd1","Scd2"), add.ident = "louvain")
+table <- AverageExpression(Microglia, features = c("Scd1","Scd2"), add.ident = "RNA_snn_res.0.4")
+table <- AverageExpression(scAD, features = c("Scd1","Scd2"), add.ident = "Multiplex")
+
+test.table <- as.data.frame(t(table$RNA))
+test.table %>% add_column(ID = rownames(.), .before = 1) %>%  separate(., ID, into = c("group", "cluster"), sep = "_", remove = T) %>% mutate(cluster = as.numeric(cluster)) %>%  arrange(group, cluster) %>% write.csv(., "../tables/Microglia_scd_avgexpr_subclusters.csv")
+
+#for scAD table
+test.table %>% add_column(ID = rownames(.), .before = 1) %>%  separate(., ID, into = c("celltype", "group"), sep = "_", remove = T) %>%  arrange(celltype, group) %>% write.csv(., "../tables/scd_avgexpr_celltype.csv")
+
 ```
 
