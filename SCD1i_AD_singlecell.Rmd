@@ -40,7 +40,7 @@ scAD[["Treatment"]] <- Idents(scAD)
 scAD <- subset(scAD, subset = nCount_RNA > 1000 & percent.mt < 500)
 
 scAD.archive <- scAD
-
+Microglia.archive <- Microglia
 
 #reorder multiplex tags for further visualization
 #CAREFUL, THIS HAS BEEN SCREWING UP THE DATA
@@ -86,7 +86,7 @@ scAD <- RenameIdents(scAD, '0' = 'Endothelial',
                      '22' = 'Mural',
                      '23' = 'Ependymal',
                      '24' = 'Stromal',
-                     '25' = 'Vascular endothelial',
+                     '25' = 'Endothelial',
                      '26' = 'Tanycyte',
                      '27' = 'Stromal',
                      '28' = 'Neuron',
@@ -95,7 +95,8 @@ scAD <- RenameIdents(scAD, '0' = 'Endothelial',
                      '31' = 'Endothelial',
                      '32' = 'Oligodendrocyte')
 scAD[["cell.id"]] <- Idents(object = scAD)
-
+DEG_celltypes <- FindAllMarkers(scAD)
+write.csv(DEG_celltypes , "../tables/celltypesDEG_all.csv")
 
 Idents(scAD) <- "Multiplex"
 scAD <- RenameIdents(scAD, "SampleTag02_mm" = "3xTg DMSO", "SampleTag01_mm" = "WT DMSO", "SampleTag03_mm" = "WT SCD1i", "SampleTag04_mm" = "3xTg SCD1i")
@@ -140,7 +141,8 @@ Idents(Oligo) <- "Multiplex"
 DEG_Oligo <- FindAllMarkers(Oligo) ##No DEG above threshold for WT samples
 DEG_Oligo <- FindMarkers(Oligo, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", logfc.threshold = 0.05) #find markers for specific comparisons
 DEG_Oligo <- FindMarkers(Oligo, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", logfc.threshold = 0.05)
-write.csv(DEG_Oligo, "../tables/DEG_oligo_WTDvs3xtgD.csv")
+DEG_Oligo <- FindMarkers(Oligo, ident.1 = "3xTg SCD1i", ident.2 = "3xTg DMSO", logfc.threshold = 0.05)
+write.csv(DEG_Oligo, "../tables/DEG_oligo_3xtgDvs3xtgS.csv")
 rm(Oligo) #to save on memory?
 
 #subset Microglia to characterize subclusters
@@ -157,12 +159,15 @@ Microglia <- subset(Microglia, cells = to.keep, subset = Multiplex != "Undetermi
 Microglia_subcluster_DEG <- FindAllMarkers(Microglia)
 write.csv(Microglia_subcluster_DEG, "../tables/Microglia_only_DEG.csv")
 
+DEG_micro_fromtotal <- DEG_celltypes[DEG_celltypes$cluster == "Microglia",]
 DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
 DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
-
-DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", subset.ident = 8, logfc.threshold = 0.05)
-DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", subset.ident = 8, logfc.threshold = 0.05)
-write.csv(DEG_Micro, "../tables/DEG_micro_cluster8_WTDvs3xtgS.csv")
+DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "3xTg DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
+DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", subset.ident = 4)
+DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", subset.ident = 4)
+DEG_Micro <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "3xTg DMSO", group.by = "Multiplex", subset.ident = 4)
+DEG_Micro20 <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "3xTg DMSO", group.by = "Multiplex", subset.ident = 20, logfc.threshold = 0.05, )
+write.csv(DEG_Micro, "../tables/DEG_micro_subclust4_3xTgDvs3xtgS.csv")
 
 write.csv(table(Microglia$louvain, Microglia$Multiplex), "../tables/Microglia_clusters_per_multiplex.csv")
 DimPlot(Microglia, group.by = "RNA_snn_res.0.5", split.by = "Multiplex")
@@ -176,7 +181,8 @@ Astrocyte_subcluster_DEG <- FindAllMarkers(Astrocytes)
 write.csv(Astrocyte_subcluster_DEG %>% group_by(cluster) %>% top_n(n=20, wt= avg_logFC), file = "../tables/Astrocytes_DEG.csv")
 DEG_Astro <- FindMarkers(Astrocytes, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05) #find markers for specific comparisons
 DEG_Astro <- FindMarkers(Astrocytes, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
-write.csv(DEG_Astro, "../tables/DEG_Astro_WTDvs3xtgS.csv")
+DEG_Astro <- FindMarkers(Astrocytes, ident.1 = "3xTg SCD1i", ident.2 = "3xTg DMSO", group.by = "Multiplex", logfc.threshold = 0.05)
+write.csv(DEG_Astro, "../tables/DEG_Astro_3xtgDvs3xtgS.csv")
 rm(Astrocytes) #to save on memory?
 
 #Subset uncler cells to better annotate them
@@ -227,12 +233,50 @@ microglia.DEG <- FindAllMarkers(Microglia)
 write.csv(microglia.DEG, file = "../tables/microglia_subcluster_DEG.csv" )
 write.csv(FindMarkers(Microglia, ident.1 = 1), file = "../tables/microglia_subcluster_DEG_cluster1.csv")
 write.csv(FindMarkers(Microglia, ident.1 = 3), file = "../tables/microglia_subcluster_DEG_cluster3.csv")
-
+write.csv(AverageExpression(Microglia), file = "../tables/microglia_AvgExpr_subclust.csv")
+#what are DEGs between clusters 1 and 3?
+FindMarkers(Microglia, ident.1 = 1, ident.2 = 3)
 All.markers[All.markers$cluster == 4 & All.markers$avg_logFC > 0,]
 
-VlnPlot(Microglia, split.by = "RNA_snn_res.0.4", features = c("Tmem119", "P2ry12", "Cx3cr1", "Apoe", "Cst7", "Spp1", "Lpl", "Hif1a", "Igf1", "H2-Aa", "H2-Ab1", "Cd74", "Ifit2", "Ifit3", "Irf7", "Oasl2", "Top2a", "Mcm2"), stack = T, flip = T)
-VlnPlot(Microglia, split.by = "RNA_snn_res.0.4", features = c("Scd1", "Scd2", "Scd3", "Scd4"), stack = T, flip = T)
+#identify DEGs between treatment in subcluster 4
+Microglia_subclust4 <- subset(Microglia, subset = seurat_clusters == "4")
+find
+#save original UMAP embeddings 
+Microglia@misc$'reductions.backup'$umap_tot <- Microglia@reductions$umap
+Microglia <- RunUMAP(Microglia, dims = 1:10, n.components = 2) #2D UMAP
+Microglia@misc$'reductions.backup'$umap_2D <- Microglia@reductions$umap
 
+
+grep("Trem", scAD@assays$RNA@data@Dimnames[[1]],value = T)
+
+VlnPlot(Microglia, split.by = "RNA_snn_res.0.4", features = c("Tmem119", "P2ry12", "Cx3cr1", "Apoe", "Cst7", "Spp1", "Lpl", "Hif1a", "Igf1", "H2-Aa", "H2-Ab1", "Cd74", "Ifit2", "Ifit3", "Irf7", "Oasl2", "Top2a", "Mcm2", "Clec5a"), stack = T, flip = T)
+VlnPlot(Microglia, split.by = "RNA_snn_res.0.4", features = c("Scd1", "Scd2", "Scd3", "Scd4"), stack = T, flip = T)
+VlnPlot(Microglia, split.by = "RNA_snn_res.0.4", features = c("H2-D1", "H2-K1"), stack = T, flip = T)
+VlnPlot(Microglia, group.by = "RNA_snn_res.0.4", features = c("Tlr2", "Ptgs2", "Il12b", "Il1b", "Cd44","Nfkb1","Stat1", "Rela", "Igf1", "Apoe", "Myo1e","Cxcr4", "Atf1", "Nos2", "Arg1", "Chil3", "Tgfb1", "Trem2"), stack = T, flip = T)
+VlnPlot(Microglia, group.by = "louvain", features = c("Tlr2", "Ptgs2", "Il12b", "Il1b", "Cd44","Nfkb1","Stat1", "Rela", "Igf1", "Apoe", "Myo1e","Cxcr4", "Atf1", "Nos2", "Arg1", "Chil3", "Tgfb1", "Trem2"), stack = T, flip = T)
+VlnPlot(Microglia, group.by = "RNA_snn_res.0.4", features = DEG_MST, stack = T, flip = T)
+VlnPlot(Microglia, group.by = "louvain", features = DEG_MST, stack = T, flip = T)
+VlnPlot(Microglia, group.by = "RNA_snn_res.0.4", features = DEG_slingshot, stack = T, flip = T)
+VlnPlot(Microglia, group.by = "louvain", features = DEG_slingshot, stack = T, flip = T)
+VlnPlot(Microglia, features = c("H2-D1", "H2-K1", "H2-T23", "H2-Q6", "H2-M3", "Trem2"), group.by = "seurat_clusters", stack = T, flip = T)+NoLegend()
+VlnPlot(Microglia, features = our_MG_DEG2, group.by = "seurat_clusters", stack = T, flip = T)+NoLegend()
+
+#to generate a dotplot with seurat_clusters and multiplex in the right order, start by creating a copy of Microglia to manipulate
+Microgli_graph <- Microglia
+    #change order of split.by = multiplex
+Microgli_graph@meta.data$mplex <- as.character(Microgli_graph@meta.data$Multiplex)
+Microgli_graph@meta.data$mplex <- revalue(Microgli_graph@meta.data$mplex, c("WT DMSO" = 1, "3xTg DMSO" =2, "WT SCD1i" =3, "3xTg SCD1i" =4, "Undetermined" =5))
+Microgli_graph@meta.data$mplex <- as.numeric(Microgli_graph@meta.data$mplex)
+Microgli_graph@meta.data <- dplyr::arrange(Microgli_graph@meta.data, desc(Microgli_graph@meta.data$mplex))
+Microgli_graph@meta.data$mplex <- as.factor(Microgli_graph@meta.data$mplex)
+Microgli_graph@meta.data$mplex <- revalue(Microgli_graph@meta.data$mplex, replace = c("1"= "WT DMSO" ,"2"= "3xTg DMSO" ,"3"= "WT SCD1i" ,"4"= "3xTg SCD1i" ))
+    #change order of group.by = seurat_clusters
+Microgli_graph$seurat_clusters <- as.factor(Microgli_graph$seurat_clusters)
+Microgli_graph@meta.data$seurat_clusters <- factor(Microgli_graph@meta.data$seurat_clusters, levels = c("6", "5", "4", "3", "2", "1", "0"))
+dotplot <- DotPlot(Microgli_graph, features = c("H2-D1", "H2-K1", "H2-T23", "H2-Q6", "H2-M3", "Trem2"), group.by = "seurat_clusters", split.by = "mplex", cols = "RdBu" )
+
+
+data.pivot$Multiplex <- factor(data.pivot$Multiplex,levels = c("WTD", "X3xTgD", "WTS", "X3xTgS"))
 #based on Friedman et al. 2018, plot 3-gene density plots to identify microglial subpops
 DA_MG <- c("Csf1", "Cst7", "Itgax")
 TNK <- c("Thy1", "Cd3e", "Nkg7")
@@ -248,15 +292,18 @@ Prolif <- c("Mki67", "Pcna", "Top2a")
 Resting_MG <- c("Tmem119", "P2ry12", "P2ry13")
 Malat1 <- "Malat1"
 
+our_MG_DEG <- c("Atf3", "Fos", "Egr1", "Actg1", "Zfp36", "Mobp", "Mbp", "Plekhb1", "Bcas1", "Plp1", "Gpm6a", "Scg3", "Ptprz1", "Slc4a4", "Cspg5", "Lgals3", "Rab7b", "Igf1", "Lilr4b", "Cybb", "Irf7", "Ifi206", "Ifit2", "Ifit3", "Ifit3b")
+our_MG_DEG2 <- c("P2ry12", "Tmem119", "Slc2a5", "Fcrls", "Atf3", "Fos", "Egr1", "Actg1", "Mobp", "Mbp", "Plekhb1", "Bcas1", "Gpm6a", "Scg3", "Ptprz1", "Slc4a4", "Lgals3", "Rab7b", "Igf1", "Lilr4b", "Irf7", "Ifi206", "Ifit2", "Ifit3")
+
 to.plot <- c("Malat1", "Prolif", "Resting_MG", "IFN_MG", "DA_MG", "Bcl2a1MG", "TNK", "IEG", "Neutro", "MatureB", "PVM", "Mono", "ImmB")
 to.plot <- c("Prolif", "Resting_MG", "IFN_MG", "DA_MG", "IEG", "Bcl2a1MG")
 
-plot0 <- DimPlot(Microglia, group.by = "RNA_snn_res.0.4", label = T, repel = T)
+plot0 <- DimPlot(Microglia.clean, group.by = "RNA_snn_res.0.4", label = T, repel = T, reduction = "tsne")
 plot_join <- plot0+NoLegend()
-plot_join <- plot_density(Microglia, features = "Malat1", joint = TRUE, combine = FALSE)+theme_void()+labs(title = "Malat1" )+ theme(plot.title = element_text(hjust = 0.5))
+plot_join <- plot_density(Microglia.clean, features = "Malat1", joint = TRUE, combine = FALSE, reduction = "tsne")+theme_void()+labs(title = "Malat1" )+ theme(plot.title = element_text(hjust = 0.5))
 for (i in to.plot){
   j <- get(i)
-  plot1 <- plot_density(Microglia, features = j, joint = TRUE, combine = FALSE)
+  plot1 <- plot_density(Microglia.clean, reduction = "tsne", features = j, joint = TRUE, combine = FALSE)
   if (length(j) == 1) {
     plot_join <- plot_join + plot1+theme_void()+labs(title = i )+ theme(plot.title = element_text(hjust = 0.5))
   }
@@ -323,35 +370,233 @@ DEG_Micro2 <- FindMarkers(Microglia, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO"
 DEG1 <- rownames(DEG_Micro1[DEG_Micro1$p_val_adj < 0.05,])
 DEG2 <- rownames(DEG_Micro2[DEG_Micro2$p_val_adj < 0.05,])
 DEG <- unique(c(DEG1,DEG2))
+fixed_DEG <- DEG1[DEG1 %!in% DEG2]
+newly_changed_DEG <- DEG2[DEG2 %!in% DEG1]
+not_fixed_DEG <- DEG1[DEG1 %in% DEG2]
 
-Idents(Microglia) <- "Multiplex"
-avg_expr_DEG <- AverageExpression(Microglia, features = DEG, assays = "RNA")
-pheatmap::pheatmap(avg_expr_DEG$RNA[,c(2,1,3,4)],
+#gene lists from Laura
+fixed_DEG <- c("Ccl6", "Hlf", "Spry1", "Enc1", "Sall3", "4833420G17Rik", "Ano6", "Myadm", "Jam2", "Liph", "Gm47283", "Arl4c", "Cd33", "Arhgap22", "Ccni", "Cltc", "Sall1", "Olfml3", "C1qa", "Hsp90ab1", "Lgi4", "H2-D1", "H2-K1", "Acsl1", "Cd14", "Nrp1", "Arid5b", "Ctse", "Bag3", "Adrb1")
+newly_changed_DEG <- c("Fth1", "Chek2", "Rps12", "Mpc1", "Rgs10", "Cd9", "Sh3bgrl3", "Vps39", "Itga6", "Abcc3", "Lyz2", "Tmem268", "Plxdc2", "Rpl13", "Slc7a7", "C3ar1", "Efhd2", "Ccng2", "Clta", "Slc25a37", "Slc3a2", "Padi2", "Ncf4", "Prex1", "Rpl23", "Rps5", "Hes1", "Gns", "Rpl32", "Ints6l", "Acsl4", "Vps37a", "Slc12a2", "Washc2")
+not_fixed_DEG <- c("Gatm", "Ccr6", "Anxa3", "Adamts1", "Tagap1", "Cd34", "Dlgap1", "Rtn4rl1", "Rplp1", "Tifa", "Gnb4", "Cd180", "Adgrl2", "Ccdc80", "Bank1", "C5ar2", "Arhgap31", "Rnase4", "Ctsl", "Naip5", "Il1a", "Pnp", "Rcbtb2", "Neurl1a", "Psen1", "Slc1a3", "Tnfrsf11a", "Ccrl2", "Cables1", "Whrn", "Ifi44", "Angptl7", "Crtap", "Hhex", "Mylip", "Ccl9", "Colec12", "Ccdc122", "Adgre1", "Med12l", "C5ar1", "Cfh", "Cnot7", "Abcd2", "Hjurp", "Rb1", "Cd164", "Klrd1", "Plppr4", "Rbm5", "Gm44751", "Abhd12", "Srsf2", "Ctsc", "Itgam", "Pqlc1", "Mpeg1", "Slc2a5", "Fam102b", "Procr", "Map7", "Chst1", "Rbpms", "Lactb", "Apobec3", "Filip1l", "Il6st", "Sash3", "Ablim1", "Nnt", "Gdpd3", "Icosl", "Frrs1", "Ucp2", "Spint1", "Ccr5", "Trim12a", "Serpine1", "Dusp7", "Rps13", "Atp2c1", "Fkbp5", "Serinc3", "Tagap", "Lacc1", "Ang", "Arsb", "Ddit4", "Qpct", "Trim30d", "Upk1b", "Ccr1")
+all_DEG <- c(fixed_DEG, newly_changed_DEG, not_fixed_DEG)
+
+Idents(Microglia.clean) <- "Multiplex"
+avg_expr_DEG <- AverageExpression(Microglia.clean, features = newly_changed_DEG, assays = "RNA")
+pheatmap::pheatmap(avg_expr_DEG$RNA[,4:1],
                    scale = "row",
                    cluster_cols = F, 
                    cellwidth = 20, 
-                   cellheight = 9,gaps_col = c(1,2,3),filename = "../figures/MG_DEG_heatmap.pdf")
+                   cellheight = 9,
+                   gaps_col = c(1,2,3),
+                   show_rownames = T,
+                   main = "Newly changed",
+                   filename = "../figures/final_clean/s3f_MG_newly_heatmap_names.pdf"
+                   )
 
 ```
 
 density plots of Scd genes between multiplex tags in microglia
 ```{r}
 avg_expr_scd <-AverageExpression(Microglia, features = c("Scd1", "Scd2", "Scd3", "Scd4"), assays = "RNA") 
-
-dot <- DotPlot(Microglia, features = c("Scd1","Scd2", "Scd3", "Scd4"), idents = c("3xTg DMSO", "WT DMSO", "WT SCD1i", "3xTg SCD1i"))
+Microglia$
+dot <- DotPlot(Microglia.clean, features = c("Scd1","Scd2", "Scd3", "Scd4"), group.by = "Multiplex")
 write.csv(dot$data, "../tables/Microglia_SCD_multiplex.csv")
 
 FeaturePlot(Microglia, features = c("Scd1","Scd2"), split.by = "Multiplex" )
 
-table <- AverageExpression(Microglia, features = c("Scd1","Scd2"), add.ident = "louvain")
+table <- AverageExpression(Microglia.clean, features = c("Scd1","Scd2"), add.ident = "louvain")
 table <- AverageExpression(Microglia, features = c("Scd1","Scd2"), add.ident = "RNA_snn_res.0.4")
 table <- AverageExpression(scAD, features = c("Scd1","Scd2"), add.ident = "Multiplex")
 
 test.table <- as.data.frame(t(table$RNA))
-test.table %>% add_column(ID = rownames(.), .before = 1) %>%  separate(., ID, into = c("group", "cluster"), sep = "_", remove = T) %>% mutate(cluster = as.numeric(cluster)) %>%  arrange(group, cluster) %>% write.csv(., "../tables/Microglia_scd_avgexpr_subclusters.csv")
+test.table %>% add_column(ID = rownames(.), .before = 1) %>%  separate(., ID, into = c("cluster", "Multiplex"), sep = "_", remove = T) %>% mutate(cluster = as.numeric(cluster)) %>%  arrange(Multiplex, cluster) %>% write.csv(., "../tables/final_clean/SCD_avgexpr_subclusters.csv")
 
 #for scAD table
 test.table %>% add_column(ID = rownames(.), .before = 1) %>%  separate(., ID, into = c("celltype", "group"), sep = "_", remove = T) %>%  arrange(celltype, group) %>% write.csv(., "../tables/scd_avgexpr_celltype.csv")
+
+```
+
+pseudotime analysis of microglial cells with dyno to test multiple Trajectory inference tools
+```{r}
+library(dyno)
+microglia_subfeat <- subset(Microglia, features = VariableFeatures(Microglia))
+dataset <- wrap_expression(counts = t(microglia_subfeat@assays$RNA@counts), expression = t(microglia_subfeat@assays$RNA@scale.data) )
+dataset <- add_grouping(dataset, grouping = microglia_subfeat$seurat_clusters)
+dataset <- add_dimred(dataset, Embeddings(Microglia, reduction = "umap"))
+dataset <- add_prior_information(dataset, start_id = "X279789", end_id = c("X247204", "X752437"), start_n = 1, end_n = 2, groups_id = as.data.frame(cbind(cell_id = microglia_subfeat@assays$RNA@data@Dimnames[[2]], group_id =microglia_subfeat$seurat_clusters))) # to select the starting cell, pick one in the middle of the resting microglia cluster with hoverlocator. Needed for some methods (PAGA) (X164060 = middle, X279789 = bottom left)
+
+#Export seurat object to try RNA velocity in python
+SaveH5Seurat(Microglia, filename = "Microglia.h5Seurat")
+Convert("Microglia.h5Seurat", dest = "h5ad")
+
+# Select the best method with shiny app
+guidelines <- guidelines_shiny(dataset)
+methods_selected <- guidelines$methods_selected #slingshot, PAGA tree, PAGA, MST
+methods_selected2 <- c("monocle_ica", "wishbone", "stemnet")#add Monocle ICA, wishbone, stemnet
+
+#Run the selected methods
+model <- infer_trajectory(dataset, methods_selected[1], verbose = T)
+model_rooted <- model %>% add_root(root_milestone_id = "3")
+plot_dimred(model_rooted, "pseudotime", dimred = dataset$dimred, pseudotime = calculate_pseudotime(model_rooted))
+plot_onedim(model_rooted, label_milestones = T, grouping = dataset$grouping)
+plot_heatmap(model_rooted)
+DEG_slingshot <- c("Sparcl1", "Apoe", "Tspan7", "Eef1a1", "Actg1", "Csf1r", "Selplg", "P2ry12", "Cx3cr1", "Marcks", "Gpr34", "Vsir", "Slc2a5", "Cd164", "Cst3", "Hexb", "Sparc", "Laptm5", "Siglech")
+
+
+model234 <- infer_trajectories(dataset, method = methods_selected[2:4], verbose = T)
+plot_dimred(model234$model[[1]], grouping = dataset$grouping, dimred = dataset$dimred) #PAGA-tree
+plot_dimred(model234$model[[2]], "pseudotime", dimred = dataset$dimred, pseudotime = calculate_pseudotime(model234$model[[2]]), label_milestones = "all") #PAGA
+plot_dimred(model234$model[[3]], "pseudotime", dimred = dataset$dimred, pseudotime = calculate_pseudotime(model234$model[[3]]), label_milestones = "all") #MST seems to have the best profile with one branch going top and one going towards cluster 4
+
+MST_rooted <- model234$model[[3]] %>% add_root(root_milestone_id = "M3")
+DEG_MST <- c("Fosb", "Fos", "Egr1", "Junb", "Klf2", "Dusp1", "Klf6", "Glul", "Ccnl1", "H3f3b", "Atf3", "Actg1", "Nfkbiz", "Ptma", "H2-K1", "H2-D1", "B2m", "Fth1")
+model_wishbone <- infer_trajectory(dataset, ti_wishbone(), verbose = T)
+model_monocleICA <- infer_trajectory(dataset, ti_monocle_ica(), verbose = T)
+model_MST2 <- infer_trajectory(dataset, ti_mst())
+model_MST2 <- model_MST2 %>% add_root(root_milestone_id = "M5")
+model_MST3 <- infer_trajectory(dataset, ti_mst())
+model_slingshot <- infer_trajectory(dataset, ti_slingshot(), verbose = T)
+model_PAGAtree <- infer_trajectory(dataset, ti_paga_tree()) #doesn't change with new calculations
+model_PAGAtree <- model_PAGAtree %>% add_root(root_milestone_id = "4")
+```
+
+test out Monocle3 too
+```{r}
+library(SeuratWrappers)
+library(monocle3)
+Microglia_monocle <- as.cell_data_set(microglia_subfeat)
+Microglia_monocle <- cluster_cells(Microglia_monocle, reduction_method = "UMAP")
+Microglia_monocle <- learn_graph(Microglia_monocle, use_partition = T)
+
+Microglia_monocle <- order_cells(Microglia_monocle)
+
+plot_cells(Microglia_monocle, color_cells_by = "pseudotime")
+
+#Try to generate the trajectory graph
+Microglia_monocle <- reduce_dimension(Microglia_monocle)
+Microglia_monocle <- cluster_cells(Microglia_monocle)
+Microglia_monocle <- learn_graph(Microglia_monocle)
+
+plot_cells(Microglia_monocle, reduction_method = "PCA")
+```
+
+Geneset analysis using go:st of markers of Microglia subcluster 4
+```{r}
+library(gprofiler2)
+pathways_subclust4 <- gost(rownames(Microglia_subcluster_DEG[Microglia_subcluster_DEG$cluster == 20,]), organism = "mmusculus", sources = c("GO:BP", "GO:MF", "KEGG", "REACT"), evcodes = T)
+gostplot(pathways_subclust4)
+df <- as.data.frame(apply(pathways_subclust4$result, 2, as.character))
+write.csv(df, "../tables/subcluster4_DEG_pathways.csv")
+write.csv(Microglia_subcluster_DEG[Microglia_subcluster_DEG$cluster == 20,], "../subclust4_DEG.csv")
+```
+
+
+2021-01-22 mitochondrial content measurement was weird initially so I redid it manually to find out some cells should have been removed, fucking up the whole analysis... Testing if we need to restart the whole thing or just remove the affected cells in Microglia
+```{r}
+#new formula used to calculate the % mito content
+mito.genes <- grep(pattern = "^mt-", x = scAD.archive@assays$RNA@data@Dimnames[[1]], value = TRUE)
+percent.mito <- Matrix::colSums(scAD.archive[mito.genes, ])/Matrix::colSums(scAD.archive)
+percent.mito <- Matrix::colSums(scAD.archive@assays$RNA@counts[mito.genes, ])/Matrix::colSums(scAD.archive@assays$RNA@counts)
+scAD.archive$percent.mt2 <- percent.mito
+FeatureScatter(scAD.archive, feature1 = "percent.mt", feature2 = "percent.mt2", group.by = "louvain")+geom_hline(yintercept = 0.27)+geom_vline(xintercept = 500) # shows that all cells that were thresholded out by percent.mt would also be by percent.mt2 (more stringent). Thus, the new threshold can be applied directly to scAD (without having to rerun a bunch of things, esp. annotation)
+
+mito.genes <- grep(pattern = "^mt-", x = scAD@assays$RNA@data@Dimnames[[1]], value = TRUE)
+percent.mito <- Matrix::colSums(scAD[mito.genes, ])/Matrix::colSums(scAD)
+percent.mito <- Matrix::colSums(scAD@assays$RNA@counts[mito.genes, ])/Matrix::colSums(scAD@assays$RNA@counts)
+scAD$percent.mt2 <- percent.mito
+scAD.clean <- subset(scAD, subset = percent.mt2 < 0.27)
+
+#reexport the figures
+Idents(scAD.clean) <- "Multiplex"
+scAD.clean <- RenameIdents(scAD.clean, "Undetermined" = "Untagged")
+scAD.clean$Multiplex <- Idents(scAD.clean)
+scAD.clean$Multiplex <- factor(scAD.clean$Multiplex, levels = c("Undetermined", "WT DMSO", "3xTg DMSO", "WT SCD1i", "3xTg SCD1i"))
+DimPlot(scAD.clean, group.by = "cell.id", split.by = "Multiplex", label = T, label.size = 2.5, repel = T)+NoLegend()
+
+#apply the formula to Microglia and check which cells are removed
+percent.mito.MG <- Matrix::colSums(Microglia[mito.genes, ])/Matrix::colSums(Microglia)
+percent.mito.MG <- Matrix::colSums(Microglia@assays$RNA@counts[mito.genes, ])/Matrix::colSums(Microglia@assays$RNA@counts)
+Microglia$percent.mt2 <- percent.mito.MG
+#To remove only outliers, keep cells with a 27% percent.mito or less
+Microglia.clean <- subset(Microglia, subset = percent.mt2 < 0.27)
+Idents(Microglia.clean) <- "seurat_clusters"
+Microglia.clean <- RenameIdents(Microglia.clean, "0" = "T(IR/AR)",
+                                "1" = "H1",
+                                "2" = "T(AM)",
+                                "3" = "H2",
+                                "4" = "AM",
+                                "5" = "AR",
+                                "6" = "IR")
+Idents(Microglia.clean) <- "Multiplex"
+Microglia.clean$Multiplex <- factor(Microglia.clean$Multiplex, levels = c( "3xTg SCD1i", "WT SCD1i", "3xTg DMSO", "WT DMSO"))
+DotPlot(Microglia.clean, features = c("Scd1", "Scd2", "Scd3", "Scd4"), cols = "RdBu" , group.by = "Multiplex")
+DotPlot(Microgli_graph, features = c("H2-D1", "H2-K1", "H2-T23", "H2-Q6", "H2-M3", "Trem2"), group.by = "seurat_clusters", split.by = "mplex", cols = "RdBu" )
+Microglia.clean[["minicluster_name"]] <- Idents(Microglia.clean)
+DimPlot(Microglia.clean, label = T, label.size = 3, repel = T) #export 4.2 x 3in
+Microglia.clean@reductions$umap <- Microglia.clean@misc$reductions.backup$umap_2D #to change the umap for the recalculated one
+
+#violin plots
+#our DEG markers
+our_MG_DEG_pval <- c("P2ry12", "Tmem119", "Slc2a5", "Fcrls","Actg1", "Atf3", "Egr1", "Fos", "Fosb", "Bcas1","Gpm6a", "Htra1", "Ifi206", "Ifit2", "Ifit3", "Igf1", "Irf7", "Lgals3", "Lilr4b", "Mbp", "Mobp", "Plekhb1", "Rab7b", "Scg3", "Slc4a4")
+our_MG_DEG_logfc <- c("P2ry12", "Tmem119", "Slc2a5", "Fcrls","Atf3", "Nr4a1", "Cd83", "Egr1", "Mobp", "Mbp", "Plekhb1", "Bcas1", "Plpp3", "Atp1a2", "Slc1a2", "Atp1b2", "Lpl", "Apoe", "Cybb", "Lyz2", "Ifit3", "Ifitm3", "Ifi204", "Ccl12")
+
+VlnPlot(Microglia.clean, features = our_MG_DEG_logfc, group.by = "seurat_clusters", stack = T, flip = T)+NoLegend()
+
+#Rerun MST, PAGA-tree
+Microglia.clean@reductions$umap <- Microglia.clean@misc$reductions.backup$umap_2D
+microglia_subfeat <- subset(Microglia.clean, features = VariableFeatures(Microglia.clean))
+umap_2D <- Embeddings(microglia_subfeat, reduction = "umap")
+umap_tot <- Embeddings(microglia_subfeat, reduction = "umap")
+tsne <- Embeddings(microglia_subfeat, reduction = "tsne")
+
+dataset <- wrap_expression(counts = t(microglia_subfeat@assays$RNA@counts), expression = t(microglia_subfeat@assays$RNA@scale.data) )
+dataset <- add_grouping(dataset, grouping = microglia_subfeat$seurat_clusters)
+dataset <- add_dimred(dataset, tsne) #change between umap_2D or umap_tot
+dataset <- add_prior_information(dataset, start_id = "X279789", end_id = c("X247204", "X752437"), start_n = 1, end_n = 2, groups_id = as.data.frame(cbind(cell_id = microglia_subfeat@assays$RNA@data@Dimnames[[2]], group_id =microglia_subfeat$seurat_clusters)))
+
+model_PAGAtree <- infer_trajectory(dataset, ti_paga_tree()) #got the 3 branches!!
+dimred <- plot_dimred(model_PAGAtree, grouping = dataset$grouping, dimred = dataset$dimred) #, dimred = dataset$dimred
+dimred+scale_color_hue() #to get the same color palette as with ggplot
+pseudotime <- plot_dimred(model_PAGAtree, "pseudotime", pseudotime = calculate_pseudotime(model_PAGAtree), dimred = dataset$dimred, plot_trajectory = F)
+pseudotime+scale_color_gradientn(colours = wes_palette("Zissou1", 100, type = "continuous"))#inferno or plasma
+plot_graph(model_PAGAtree, grouping = dataset$grouping)
+model_PAGAtree <- model_PAGAtree %>% add_root(root_milestone_id = "4")
+
+model_MST2 <- infer_trajectory(dataset, ti_mst())
+model_MST2 <- model_MST2 %>% add_root(root_milestone_id = "M3")
+
+# check expression of H2 genes (3xTg D vs S DEG)
+Idents(Microglia.clean) <- "minicluster_name"
+Microglia.clean$minicluster_name <- factor(Microglia.clean$minicluster_name, levels = c("H1", "H2", "T(IR/AR)", "IR", "AR", "T(AM)", "AM"))
+DotPlot(Microglia.clean, features = c("H2-D1", "H2-K1", "H2-T23", "H2-Q6", "H2-M3", "Trem2"), group.by = "Multiplex", cols = "RdBu" )
+VlnPlot(Microglia.clean, features = c("H2-D1", "H2-K1", "H2-T23", "H2-Q6", "H2-M3", "Trem2"), group.by = "seurat_clusters", stack = T, flip = T)+NoLegend()
+
+
+#Microglia cell type identification in violin plots
+VlnPlot(Microglia.clean, split.by = "seurat_clusters", features = c("Tmem119", "P2ry12", "Cx3cr1", "Apoe", "Cst7", "Spp1", "Lpl", "Hif1a", "Igf1", "H2-Aa", "H2-Ab1", "Cd74", "Ifit2", "Ifit3", "Irf7", "Oasl2", "Top2a", "Mcm2", "Clec5a"), stack = T, flip = T)+NoLegend()
+VlnPlot(Microglia.clean, group.by = "seurat_clusters", features = c("Tlr2", "Ptgs2", "Il12b", "Il1b", "Cd44","Nfkb1","Stat1", "Rela", "Myo1e","Cxcr4", "Atf1", "Nos2", "Arg1", "Chil3", "Tgfb1"), stack = T, flip = T)+NoLegend()
+
+
+#SCD expression in microglia
+plot_density(Microglia.clean, features = c("Scd1","Scd2", "Scd3", "Scd4"), reduction = "tsne")
+VlnPlot(Microglia.clean, group.by = "seurat_clusters", features = c("Scd1", "Scd2", "Scd3", "Scd4"), stack = T, flip = T)+NoLegend()
+
+#find DEGs within microglia between treatments
+write.csv(FindMarkers(Microglia.clean, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05), "../tables/final_clean/Microglia_DEG_WTDvs3xTgD.csv")
+write.csv(FindMarkers(Microglia.clean, ident.1 = "3xTg SCD1i", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05), "../tables/final_clean/Microglia_DEG_WTDvs3xTgS.csv")
+write.csv(FindMarkers(Microglia.clean, ident.1 = "3xTg SCD1i", ident.2 = "3xTg DMSO", group.by = "Multiplex", logfc.threshold = 0.05), "../tables/final_clean/Microglia_DEG_3xTgDvs3xTgS.csv",)
+
+
+
+#reexport cell count tables for each condition
+write.csv(table(Microglia.clean$louvain, Microglia.clean$Multiplex), "../tables/final_clean/Microglia_clusters_per_multiplex.csv")
+write.csv(table(Microglia.clean$seurat_clusters, Microglia.clean$Multiplex), "../tables/final_clean/Microglia_subclusters_per_multiplex.csv")
+write.csv(table(Microglia.clean$seurat_clusters, Microglia.clean$louvain), "../tables/final_clean/Microglia_subclusters_per_louvain.csv")
+write.csv(table(scAD.clean$cell.id, scAD.clean$Multiplex), "../tables/final_clean/Total_cellid_per_multiplex.csv")
+
+Idents(Microglia.clean) <- "seurat_clusters"
+Microglia_subcluster_DEG <- FindAllMarkers(Microglia.clean)
+write.csv(Microglia_subcluster_DEG, "../tables/final_clean/DEG_subclusters.csv")
 
 ```
 
