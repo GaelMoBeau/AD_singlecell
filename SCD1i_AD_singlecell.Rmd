@@ -542,7 +542,7 @@ our_MG_DEG_logfc <- c("P2ry12", "Tmem119", "Slc2a5", "Fcrls","Atf3", "Nr4a1", "C
 
 VlnPlot(Microglia.clean, features = our_MG_DEG_logfc, group.by = "seurat_clusters", stack = T, flip = T)+NoLegend()
 
-#Rerun MST, PAGA-tree
+#Rerun MST, PAGA-tree TI analysis
 Microglia.clean@reductions$umap <- Microglia.clean@misc$reductions.backup$umap_2D
 microglia_subfeat <- subset(Microglia.clean, features = VariableFeatures(Microglia.clean))
 umap_2D <- Embeddings(microglia_subfeat, reduction = "umap")
@@ -561,6 +561,24 @@ pseudotime <- plot_dimred(model_PAGAtree, "pseudotime", pseudotime = calculate_p
 pseudotime+scale_color_gradientn(colours = wes_palette("Zissou1", 100, type = "continuous"))#inferno or plasma
 plot_graph(model_PAGAtree, grouping = dataset$grouping)
 model_PAGAtree <- model_PAGAtree %>% add_root(root_milestone_id = "4")
+#Add pseudotime info in Microglia.clean
+Microglia.clean$Multiplex <- factor(Microglia.clean$Multiplex, levels = c("WT DMSO", "3xTg DMSO", "WT SCD1i", "3xTg SCD1i"))
+Microglia.clean[["pseudotime"]] <- calculate_pseudotime(model_PAGAtree)
+pseudoDim <- FeaturePlot(Microglia.clean, feature = "pseudotime", split.by = "Multiplex", reduction = "tsne")
+pseudoDim+scale_color_gradientn(colours = wes_palette("Zissou1", 100, type = "continuous"))
+
+# There seems to be a band-like distribution of pseudotime values, so we try to use those bins (5) to generate a new activation-level meta.data
+VlnPlot(Microglia.clean, features = "pseudotime", group.by = "seurat_clusters")+NoLegend()+geom_hline(yintercept = c(0.08, 0.15, 0.23, 0.40, 0.85))
+breaks <- c(0.08, 0.15, 0.23, 0.40, 0.85)
+tags <- c("0", "1", "2", "3", "4", "5")
+act_level <- as.tibble(Microglia.clean$pseudotime) %>% mutate("act_level" = case_when(. < breaks[1] ~ tags[1],
+                                                                   . >= breaks[1] & . < breaks[2] ~ tags[2],
+                                                                   . >= breaks[2] & . < breaks[3] ~ tags[3],
+                                                                   . >= breaks[3] & . < breaks[4] ~ tags[4],
+                                                                   . >= breaks[4] & . < breaks[5] ~ tags[5],
+                                                                   . >= breaks[5] ~ tags[6],))
+Microglia.clean[["act_level"]] <- act_level$act_level
+
 
 model_MST2 <- infer_trajectory(dataset, ti_mst())
 model_MST2 <- model_MST2 %>% add_root(root_milestone_id = "M3")
@@ -576,10 +594,24 @@ VlnPlot(Microglia.clean, features = c("H2-D1", "H2-K1", "H2-T23", "H2-Q6", "H2-M
 VlnPlot(Microglia.clean, split.by = "seurat_clusters", features = c("Tmem119", "P2ry12", "Cx3cr1", "Apoe", "Cst7", "Spp1", "Lpl", "Hif1a", "Igf1", "H2-Aa", "H2-Ab1", "Cd74", "Ifit2", "Ifit3", "Irf7", "Oasl2", "Top2a", "Mcm2", "Clec5a"), stack = T, flip = T)+NoLegend()
 VlnPlot(Microglia.clean, group.by = "seurat_clusters", features = c("Tlr2", "Ptgs2", "Il12b", "Il1b", "Cd44","Nfkb1","Stat1", "Rela", "Myo1e","Cxcr4", "Atf1", "Nos2", "Arg1", "Chil3", "Tgfb1"), stack = T, flip = T)+NoLegend()
 
+#gene expression heatmaps per condition of genes of interest
+Sierskma18 <- c("Apoe", "Clu", "Gpc2", "Inpp5d", "Cd33", "Plcg2", "Treml2", "Spi1", "Fcer1g", "Syk", "Grn", "Slc2a5", "Samsn1", "Pop1", "Hexb", "Rrbp1", "Lyn", "Blnk")
+
+avg_expr_DEG <- AverageExpression(Microglia.clean, features = Sierskma18, assays = "RNA")
+pheatmap::pheatmap(avg_expr_DEG$RNA,
+                   scale = "row",
+                   cluster_cols = F, 
+                   cellwidth = 20, 
+                   cellheight = 9,
+                   gaps_col = c(1,2,3),
+                   show_rownames = T,
+                   main = "Sierskma Top 18",
+                   filename = "../figures/final_clean/hm_Sierskma_top18.pdf"
+                   )
 
 #SCD expression in microglia
 plot_density(Microglia.clean, features = c("Scd1","Scd2", "Scd3", "Scd4"), reduction = "tsne")
-VlnPlot(Microglia.clean, group.by = "seurat_clusters", features = c("Scd1", "Scd2", "Scd3", "Scd4"), stack = T, flip = T)+NoLegend()
+scdvln <- VlnPlot(Microglia.clean, group.by = "seurat_clusters", features = c("Scd1", "Scd2", "Scd3", "Scd4"), stack = T, flip = T)+NoLegend()
 
 #find DEGs within microglia between treatments
 write.csv(FindMarkers(Microglia.clean, ident.1 = "3xTg DMSO", ident.2 = "WT DMSO", group.by = "Multiplex", logfc.threshold = 0.05), "../tables/final_clean/Microglia_DEG_WTDvs3xTgD.csv")
